@@ -1,0 +1,48 @@
+name: Publish Forever Alchemy v0.3.4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'releases/forever-alchemy-0.3.4.jar'
+      - '.github/workflows/publish-alchemy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Verify JAR and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s releases/forever-alchemy-0.3.4.jar
+          python3 - <<'PY'
+          import zipfile
+          p='releases/forever-alchemy-0.3.4.jar'
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None, 'Corrupt JAR archive'
+              data=z.read('META-INF/neoforge.mods.toml').decode()
+              assert 'version="0.3.4"' in data, 'Wrong mod version'
+              assert 'modId="forever_alchemy"' in data, 'Wrong mod ID'
+          print('JAR integrity and version verified')
+          PY
+      - name: Generate checksum
+        run: sha256sum releases/forever-alchemy-0.3.4.jar > SHA256SUMS.txt
+      - name: Publish or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v0.3.4 >/dev/null 2>&1; then
+            gh release upload v0.3.4 releases/forever-alchemy-0.3.4.jar SHA256SUMS.txt --clobber
+            gh release edit v0.3.4 --title "Forever Alchemy v0.3.4" --notes "Minecraft Java 1.21.1 | NeoForge 21.1.252+ (21.1.x) | Java 21. Download the JAR asset below and install it on both the client and server. Do not download the automatically generated source archives." --latest
+          else
+            gh release create v0.3.4 releases/forever-alchemy-0.3.4.jar SHA256SUMS.txt --title "Forever Alchemy v0.3.4" --notes "Minecraft Java 1.21.1 | NeoForge 21.1.252+ (21.1.x) | Java 21. Download the JAR asset below and install it on both the client and server. Do not download the automatically generated source archives." --latest --target "${{ github.sha }}"
+          fi
